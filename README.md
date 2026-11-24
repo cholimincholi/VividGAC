@@ -1,11 +1,22 @@
 # VividGAC
 
-시각 정보로 오디오 캡셔닝을 유도하되, 실제 오디오로 확인된 단서만 전달해 오디오·비디오 질의응답을 수행합니다.
+VividGAC는 영상의 시각적 단서를 활용해 오디오를 설명하고, 영상과 소리에 관한 질문에 답하는 프로그램입니다. 영상에 보이는 대상이 실제로 소리를 내는지 CLAP 유사도로 판단한 뒤, 기준을 통과한 단서만 오디오 캡션 생성에 사용합니다.
 
-- `code/run_stage.py`: 질문 키워드 → 시각 캡션 → 후보 단서 → CLAP 근거 게이트 → 오디오 캡션 → 최종 추론의 단계별 파이프라인. CLAP 점수가 임계값 이상인 단서만 남기고, 전체 시각 캡션을 오디오 프롬프트에서 분리합니다. 통과한 단서가 없으면 일반 오디오 설명으로 전환합니다.
-- `code/models.py`: VLM·오디오 모델·추론 LLM 래퍼와 CLIP·CLAP 정규화 임베딩 및 코사인 유사도 계산.
-- `code/prompts.py`: 시각·오디오 캡셔닝 및 추론 프롬프트.
-- `code/config.py`: 모델 위치, 생성 매개변수, 질문 관련성 임계값 `TAU_R`와 오디오 근거 임계값 `TAU_A`.
-- `code/data.py`, `code/prepare_audio.py`: 질의응답 입력 형식 통일과 영상에서 16 kHz 모노 오디오 추출.
+먼저 영상 캡션에서 소리와 관련될 수 있는 후보 단서를 추출합니다. 각 단서와 오디오의 유사도를 계산하고, 임계값을 넘은 단서만 오디오 모델에 전달합니다. 이때 전체 영상 캡션은 오디오 프롬프트에 넣지 않습니다. 적합한 단서가 없으면 일반적인 오디오 설명을 생성합니다. 마지막으로 시각·오디오 캡션을 질문과 함께 언어모델에 전달해 답변을 얻습니다.
 
-핵심 소스 발췌본입니다. 실행에는 별도 모델 가중치·입력 데이터와 PyTorch, Transformers, spaCy(`en_core_web_sm`), librosa, qwen-vl-utils, PyAV, SoundFile 등 사용 모델에 맞는 라이브러리가 필요합니다. 모델·데이터·출력 위치는 상대경로 또는 `VIVID_MODELS`, `VIVID_DATA`, `VIVID_OUTPUTS` 환경변수로 지정합니다.
+## 코드 구성
+
+- `code/run_stage.py`: 시각 캡션 생성, 후보 단서 추출, CLAP 점수 계산, 오디오 캡션 생성, 최종 질의응답을 단계별로 실행합니다.
+- `code/models.py`: 시각 모델, 오디오 모델, 추론 언어모델을 불러오고, CLIP·CLAP 임베딩과 코사인 유사도를 계산합니다.
+- `code/prompts.py`: 시각·오디오 캡션 생성과 최종 질의응답에 사용하는 프롬프트를 정의합니다.
+- `code/config.py`: 모델 경로와 생성 설정을 관리합니다. 질문 관련성 임계값 `TAU_R`와 오디오 근거 임계값 `TAU_A`도 여기에서 설정합니다.
+- `code/data.py`: 여러 질의응답 데이터셋을 공통 입력 형식으로 읽습니다.
+- `code/prepare_audio.py`: 영상에서 16 kHz 모노 오디오를 추출합니다.
+
+## 실행 준비
+
+모델 가중치와 입력 데이터는 별도로 준비해야 합니다. 사용하는 모델에 맞춰 PyTorch, Transformers, spaCy, librosa, qwen-vl-utils, PyAV, SoundFile 등의 라이브러리를 설치하고, 키워드 추출을 위한 spaCy의 `en_core_web_sm` 모델도 준비합니다.
+
+모델, 데이터, 결과 저장 경로는 기본 상대경로를 쓰거나 `VIVID_MODELS`, `VIVID_DATA`, `VIVID_OUTPUTS` 환경변수로 지정할 수 있습니다. GPU를 사용하려면 `VIVIDGAC_ALLOW_GPU=1`로 설정합니다.
+
+`code/run_stage.py`에서 `vcap`, `keywords`, `clap`, `acap`, `reason` 단계를 순서대로 실행합니다. 각 단계에 데이터셋과 모델을 지정하고, VividGAC 방식의 오디오 캡션 생성과 최종 추론에는 `--method vividgac`을 사용합니다.
